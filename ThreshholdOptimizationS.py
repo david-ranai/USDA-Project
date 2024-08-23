@@ -20,7 +20,7 @@ def apply_hsv_mask(image, hue_min, hue_max, sat_min, sat_max, val_min, val_max):
     return masked_image
 
 # Load the image
-image_path = "C:\\Users\\User\\Desktop\HSV Imagesss\\S4.png"  # Use raw string for the path
+image_path = "C:\\Users\\User\\Desktop\HSV Imagesss\\S8.png"  # Use raw string for the path
 print(f"Loading image from: {image_path}")  # Debug print
 image = cv2.imread(image_path)
 

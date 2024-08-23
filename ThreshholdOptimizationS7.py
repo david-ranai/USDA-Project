@@ -44,9 +44,9 @@ def calculate_hsv_histogram_and_mask(image_path, hue_min, hue_max, sat_min, sat_
 # Example usage
 image_path = "C:\\Users\\User\\Desktop\\HSV Imagesss\\S7.2.png"
 
-# Further adjusted HSV ranges for species 3 to capture green areas
-hue_min, hue_max = 35, 90  # Focusing on green hues
-sat_min, sat_max = 30, 170
+# Apply the HSV mask with the specified range for green hues
+hue_min, hue_max = 70, 105  # Focused on the green hue
+sat_min, sat_max = 30, 150
 val_min, val_max = 50, 200
 
 calculate_hsv_histogram_and_mask(image_path, hue_min, hue_max, sat_min, sat_max, val_min, val_max)

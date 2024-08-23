@@ -13,23 +13,23 @@ from scipy.ndimage import label
 import cv2
 
 # Define thresholds for filtering
-P1, P2, P3 = 1.05, 1.1, 1.7
+P1, P2, P3 = 1.1, 1.2, 1.7
 epsilon = 1e-5  # Small value to prevent division by zero
 
 # HSV Ranges for each species
 species_hsv = {
-    1: {'hue_min': 33, 'hue_max': 80, 'sat_min': 25, 'sat_max': 211, 'val_min': 54, 'val_max': 217},
-    2: {'hue_min': 28, 'hue_max': 80, 'sat_min': 13, 'sat_max': 216, 'val_min': 64, 'val_max': 215},
-    3: {'hue_min': 35, 'hue_max': 58, 'sat_min': 37, 'sat_max': 115, 'val_min': 53, 'val_max': 179},
-    4: {'hue_min': 18, 'hue_max': 88, 'sat_min': 30, 'sat_max': 124, 'val_min': 48, 'val_max': 128},
-    5: {'hue_min': 36, 'hue_max': 64, 'sat_min': 68, 'sat_max': 236, 'val_min': 37, 'val_max': 208},
-    6: {'hue_min': 25, 'hue_max': 59, 'sat_min': 42, 'sat_max': 217, 'val_min': 31, 'val_max': 238},
-    7: {'hue_min': 75, 'hue_max': 107, 'sat_min': 44, 'sat_max': 147, 'val_min': 108, 'val_max': 255},
-    8: {'hue_min': 57, 'hue_max': 99, 'sat_min': 13, 'sat_max': 113, 'val_min': 98, 'val_max': 249}
+    1: {'hue_min': 15, 'hue_max': 47, 'sat_min': 44, 'sat_max': 202, 'val_min': 27, 'val_max': 255},
+    2: {'hue_min': 21, 'hue_max': 111, 'sat_min': 89, 'sat_max': 168, 'val_min': 22, 'val_max': 175},
+    3: {'hue_min': 45, 'hue_max': 138, 'sat_min': 55, 'sat_max': 172, 'val_min': 24, 'val_max': 118},
+    4: {'hue_min': 40, 'hue_max': 79, 'sat_min': 99, 'sat_max': 208, 'val_min': 11, 'val_max': 178},
+    5: {'hue_min': 24, 'hue_max': 59, 'sat_min': 36, 'sat_max': 128, 'val_min': 37, 'val_max': 148},
+    6: {'hue_min': 24, 'hue_max': 64, 'sat_min': 32, 'sat_max': 152, 'val_min': 20, 'val_max': 125},
+    7: {'hue_min': 24, 'hue_max': 103, 'sat_min': 23, 'sat_max': 225, 'val_min': 0, 'val_max': 255},
+    8: {'hue_min': 27, 'hue_max': 52, 'sat_min': 37, 'sat_max': 206, 'val_min': 49, 'val_max': 173}
 }
 
 # Function to calculate the green percentage using combined Canopeo and HSV algorithms
-def calculate_green_percentage(image, hsv_values):
+def calculate_green_percentage_and_species(image, species_hsv):
     red_band = image[0]
     green_band = image[1]
     blue_band = image[2]
@@ -44,26 +44,35 @@ def calculate_green_percentage(image, hsv_values):
     # Convert image to RGB and then to HSV
     rgb_image = np.stack([red_band, green_band, blue_band], axis=-1).astype(np.uint8)
     hsv_image = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2HSV)
-    
-    # HSV mask
-    hue, sat, val = cv2.split(hsv_image)
-    hsv_mask = (
-        (hue >= hsv_values['hue_min']) & (hue <= hsv_values['hue_max']) &
-        (sat >= hsv_values['sat_min']) & (sat <= hsv_values['sat_max']) &
-        (val >= hsv_values['val_min']) & (val <= hsv_values['val_max'])
-    )
 
-    # Combine Canopeo and HSV masks
-    combined_mask = canopeo_mask & hsv_mask
+    # Initialize a dictionary to hold green percentages for each species
+    species_green_percentage = {}
 
-    # Optional: Refine the mask with morphological operations
-    kernel = np.ones((5, 5), np.uint8)
-    refined_mask = cv2.morphologyEx(combined_mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    for species_id, hsv_values in species_hsv.items():
+        # HSV mask for the current species
+        hue, sat, val = cv2.split(hsv_image)
+        hsv_mask = (
+            (hue >= hsv_values['hue_min']) & (hue <= hsv_values['hue_max']) &
+            (sat >= hsv_values['sat_min']) & (sat <= hsv_values['sat_max']) &
+            (val >= hsv_values['val_min']) & (val <= hsv_values['val_max'])
+        )
 
-    # Calculate the percentage of green pixels
-    green_percentage = np.sum(refined_mask) / refined_mask.size
+        # Combine Canopeo and HSV masks
+        combined_mask = canopeo_mask & hsv_mask
 
-    return green_percentage, refined_mask, rgb_image
+        # Refine the mask with morphological operations
+        kernel = np.ones((5, 5), np.uint8)
+        refined_mask = cv2.morphologyEx(combined_mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+
+        # Calculate the percentage of green pixels for this species
+        green_percentage = np.sum(refined_mask) / refined_mask.size
+        species_green_percentage[species_id] = green_percentage
+
+    # Determine the species with the highest green percentage
+    most_likely_species = max(species_green_percentage, key=species_green_percentage.get)
+    most_likely_percentage = species_green_percentage[most_likely_species]
+
+    return most_likely_species, most_likely_percentage, refined_mask, rgb_image
 
 # Function to extract green percentage for each plot
 def extract_green_percentage(dates, shapefile_base_dir, raster_base_dir):
@@ -88,19 +97,17 @@ def extract_green_percentage(dates, shapefile_base_dir, raster_base_dir):
         with rasterio.open(raster_path, mode='r') as ds:
             for _, row in plots.iterrows():
                 plot_id = row['Treatment']
-                species_id = row['Species']
-                hsv_values = species_hsv.get(int(species_id), species_hsv[1])  # Default to species 1 if not found
-                print(f"Processing plot {plot_id} with Species ID: {species_id} (type: {type(species_id)})")
                 geom = row['geometry']
                 out_img, out_transform = mask(ds, [geom], crop=True)
                 
-                green_percentage, mask_canopeo, rgb_image = calculate_green_percentage(out_img, hsv_values)
+                # Calculate green percentage and determine the species using AI
+                most_likely_species, green_percentage, mask_canopeo, rgb_image = calculate_green_percentage_and_species(out_img, species_hsv)
                 
                 if not np.isnan(green_percentage):
                     data.append({
                         'date': date,
                         'plot_id': plot_id,
-                        'plant_id': int(species_id),
+                        'plant_id': most_likely_species,
                         'green_percentage': green_percentage
                     })
                     
@@ -109,10 +116,12 @@ def extract_green_percentage(dates, shapefile_base_dir, raster_base_dir):
     df = pd.DataFrame(data)
     return df, images
 
-# Function to visualize original and masked images
+
+# Function to visualize original and masked images with everything except the mask blacked out
 def visualize_original_vs_masked(image, mask, plot_id, date):
-    output_image = image.copy()
-    output_image[mask == 1] = [0, 255, 0]  # Highlight green pixels in green color
+    # Blackout everything except the mask
+    output_image = np.zeros_like(image)
+    output_image[mask == 1] = image[mask == 1]  # Retain the parts of the image that match the mask
     
     plt.figure(figsize=(12, 6))
     
@@ -128,6 +137,7 @@ def visualize_original_vs_masked(image, mask, plot_id, date):
 
     plt.suptitle(f'Plot {plot_id} on {date}')
     plt.show()
+
 
 # Function to create sequences for time series prediction
 def create_sequences(data, n_steps):
@@ -164,16 +174,6 @@ def train_models(df, n_steps):
         model.compile(optimizer='adam', loss='mean_squared_error')
         history = model.fit(X_train, y_train, epochs=50, batch_size=8, validation_split=0.2)
         
-        # Plot training and validation loss
-        plt.figure()
-        plt.plot(history.history['loss'], label='Training Loss')
-        plt.plot(history.history['val_loss'], label='Validation Loss')
-        plt.title(f'Model Loss for Species {species_id}')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
-        
         species_models[species_id] = model
     
     return species_models
@@ -196,6 +196,7 @@ def predict_for_plot(df, images, plot_id, n_steps, future_dates):
     green_percentages = plot_df['green_percentage'].values
     X, _ = create_sequences(green_percentages, n_steps)
     
+    # Future predictions code is retained for internal use, but not plotted
     future_predictions = []
     last_sequence = green_percentages[-n_steps:]
     for future_date in future_dates:
@@ -205,7 +206,6 @@ def predict_for_plot(df, images, plot_id, n_steps, future_dates):
     
     plt.figure(figsize=(12, 8))
     plt.plot(plot_df['date'], green_percentages[:len(plot_df)], label='Actual')
-    plt.plot(future_dates, future_predictions, label='Future Predictions', linestyle='dashed')
     plt.xlabel('Date')
     plt.ylabel('Green Percentage')
     plt.title(f'Growth Prediction for Plot {plot_id}')
@@ -219,7 +219,7 @@ def predict_for_plot(df, images, plot_id, n_steps, future_dates):
             visualize_original_vs_masked(image, mask, plot_id, date_str)
 
 # Define paths and dates
-dates = ['05182023', '06082023', '06212023', '07052023', '07212023', '08022023', '08192023','08262023','10022023','10202023','09102023', '11072023','12212023']
+dates = ['05182023', '06082023', '06212023', '07052023', '07212023']
 shapefile_base_dir = 'C:\\Users\\User\\Desktop\\USDA\\SHP Complete\\'  
 raster_base_dir = 'C:\\Users\\User\\Desktop\\USDA\\USDA PHOTO\\'  
 
